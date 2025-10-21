@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.zip
+*.log
+*.mid
+*.wav
+dataset/
+dataset_features/
+.env
+.idea/
+.vscode/
