@@ -10,3 +10,71 @@ dataset_features/
 .idea/
 .vscode/
 .DS_Store
+# Ignore audio datasets and extracted features
+dataset/
+dataset_features/
+
+# Ignore logs and performance summaries
+logs/
+
+# Ignore Python cache and compiled files
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+
+# Jupyter and VSCode files
+.ipynb_checkpoints/
+.vscode/
+
+# Mac system files
+.DS_Store
+
+# Ignore environment or model weight folders if any
+venv/
+.env/
+*.ckpt
+*.pt
+*.onnx
+*.tflite
+
+# Only track models you explicitly add
+models/
+!models/README.md  # (optional stub to keep folder tracked)# Audio datasets and outputs
+dataset/
+dataset_features/
+logs/
+
+# Audio + MIDI files (generated artifacts)
+*.wav
+*.mid
+
+# Logs and archives
+*.log
+*.zip
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+
+# IDE and editor files
+.vscode/
+.idea/
+.ipynb_checkpoints/
+
+# macOS system files
+.DS_Store
+
+# Environment and model artifacts
+.env
+venv/
+*.ckpt
+*.pt
+*.onnx
+*.tflite
+
+# Keep the models folder but allow manual inclusion
+models/
+!models/README.md
