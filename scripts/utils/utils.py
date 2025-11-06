@@ -1,21 +1,24 @@
 # filename: scripts/utils/utils.py
 """
 Utility functions for the MyMusic feature extraction pipeline.
-✅ Fully compatible with BasicPitch 0.4.x (Python 3.10–3.11 / macOS ARM64)
+✅ Fully compatible with BasicPitch 0.4.x (Python 3.10–3.11 / macOS ARM64, CoreML backend)
 
-🧠 FINAL STABILIZED VERSION
+🧠 UPDATED VERSION – OCT 2025
 ────────────────────────────
-This version unifies all previous fixes and adds automatic ONNX model setup.
+This update replaces the deprecated ONNX hardcoded path logic with an official
+cross‑platform model reference (`ICASSP_2022_MODEL_PATH`) provided by the BasicPitch library.
 
 🪄 Behavior summary:
-  • Automatically ensures `~/.cache/basic_pitch/basic_pitch.onnx` exists.
-  • If missing → auto-downloads the model using `basic_pitch.model_loader`.
-  • Always passes `model_or_model_path` to avoid TypeError in 0.4.x.
-  • Still supports internal default mode for older forks.
+  • Automatically uses the correct model file for each OS:
+      macOS  →  CoreML (.mlmodel)
+      Linux  →  ONNX (.onnx)
+      Windows →  ONNX (.onnx)
+  • No manual download or cache validation required.
+  • Works natively with `predict_and_save()` and passes the right model path.
 
 💡 Core logic:
-    if MODEL exists → pass it explicitly (always safe)
-    else             → auto-download or fallback to internal model
+    from basic_pitch.models import ICASSP_2022_MODEL_PATH
+    MODEL = ICASSP_2022_MODEL_PATH
 """
 
 import os
@@ -26,74 +29,23 @@ import soundfile as sf
 import numpy as np
 import inspect
 from datetime import datetime
-from importlib import import_module
 
-# Main BasicPitch function
+# ✅ Import the main inference function and platform‑specific model path
 from basic_pitch.inference import predict_and_save
+from basic_pitch.models import ICASSP_2022_MODEL_PATH
 
-
-# -----------------------------------------------------------
-# 🎯 Hardcoded ONNX model path
-# -----------------------------------------------------------
-
-HARD_CODED_MODEL_PATH = os.path.expanduser("~/.cache/basic_pitch/basic_pitch.onnx")
-
-
-# -----------------------------------------------------------
-# 🔍 Dynamic model loader resolver
-# -----------------------------------------------------------
-
-def _resolve_basic_pitch_loader():
-    """Try known module paths for load_model()."""
-    for path in ("basic_pitch.inference", "basic_pitch.model_loader"):
-        try:
-            mod = import_module(path)
-            if hasattr(mod, "load_model"):
-                logging.info(f"[✅] Using load_model from {path}")
-                return getattr(mod, "load_model")
-        except ModuleNotFoundError:
-            continue
-    logging.warning("[⚠️] No load_model() found — will use auto-downloaded ONNX fallback")
-    return None
-
-
-# -----------------------------------------------------------
-# 🧠 Global model setup
-# -----------------------------------------------------------
-
-load_model = _resolve_basic_pitch_loader()
-MODEL = None
-
-try:
-    # Ensure cache folder
-    os.makedirs(os.path.dirname(HARD_CODED_MODEL_PATH), exist_ok=True)
-
-    # Check local model; if missing, auto-download
-    if not os.path.exists(HARD_CODED_MODEL_PATH):
-        logging.info(f"[⬇️] Downloading ONNX model to {HARD_CODED_MODEL_PATH}")
-        from basic_pitch.model_loader import download_model
-        download_model("basic_pitch.onnx")
-
-    # Assign model path (works with predict_and_save)
-    MODEL = HARD_CODED_MODEL_PATH
-
-except Exception as e:
-    logging.error(f"[❌] Failed to preload or download BasicPitch model: {e}")
-    MODEL = None
+# ✅ Always rely on the OS‑specific model path provided by the library
+MODEL = ICASSP_2022_MODEL_PATH
 
 
 # -----------------------------------------------------------
 # ⚙️ Logging setup
 # -----------------------------------------------------------
-
 def setup_logging(log_dir: str) -> str:
     """Create log directory + file and configure logging early."""
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
-
-    # Ensure file physically exists (for test assertions)
     open(log_file, "a").close()
-
     logging.basicConfig(
         filename=log_file,
         filemode="a",
@@ -107,7 +59,6 @@ def setup_logging(log_dir: str) -> str:
 # -----------------------------------------------------------
 # 🎧 Audio validation
 # -----------------------------------------------------------
-
 def is_audio_valid(filepath: str) -> bool:
     """Check that audio exists, is readable, and non‑empty."""
     try:
@@ -120,9 +71,8 @@ def is_audio_valid(filepath: str) -> bool:
 
 
 # -----------------------------------------------------------
-# 🎚 Audio feature extraction
+# 🎚 Audio feature extraction (Librosa)
 # -----------------------------------------------------------
-
 def extract_audio_features(file_path: str) -> dict:
     """Extract tempo and onset timings using librosa."""
     try:
@@ -138,32 +88,29 @@ def extract_audio_features(file_path: str) -> dict:
 
 
 # -----------------------------------------------------------
-# 🎼 MIDI extraction (robust + auto-model)
+# 🎼 MIDI extraction (robust + CoreML/ONNX auto‑selection)
 # -----------------------------------------------------------
-
 def extract_midi(file_path: str, output_dir: str) -> bool:
     """
     Extract MIDI using BasicPitch.
-    Always passes an explicit model path if available.
+    Automatically uses the correct model for the current platform.
     """
     os.makedirs(output_dir, exist_ok=True)
     try:
         sig = inspect.signature(predict_and_save)
-
-        # ✅ Always pass model path (either real ONNX or internal)
         if "model_or_model_path" in sig.parameters:
-            logging.info(f"[🎹] Using ONNX model for {os.path.basename(file_path)}")
+            logging.info(f"[🎹] Using platform‑native model for {os.path.basename(file_path)}")
             predict_and_save(
                 [file_path],
                 output_directory=output_dir,
-                model_or_model_path=MODEL or "default",
+                model_or_model_path=MODEL,
                 save_model_outputs=False,
                 save_notes=False,
                 save_midi=True,
                 sonify_midi=False,
             )
         else:
-            # 🕹 Fallback for older forks
+            # 🕹 Fallback for older library versions
             logging.info(f"[🎹] Legacy predict_and_save() for {os.path.basename(file_path)}")
             predict_and_save(
                 [file_path],
@@ -174,7 +121,6 @@ def extract_midi(file_path: str, output_dir: str) -> bool:
                 sonify_midi=False,
             )
         return True
-
     except Exception as e:
         logging.error(f"[❌] {os.path.basename(file_path)} failed in extract_midi: {e}")
         return False
@@ -183,7 +129,6 @@ def extract_midi(file_path: str, output_dir: str) -> bool:
 # -----------------------------------------------------------
 # 💾 JSON & performance helpers
 # -----------------------------------------------------------
-
 def save_json(data: dict, output_path: str):
     """Persist extracted feature data to disk."""
     try:
@@ -203,18 +148,14 @@ def log_performance(track_name: str, start_time: datetime, end_time: datetime, s
         logging.error(f"[❌] Failed to log performance for {track_name}: {e}")
 
 
-# -----------------------------------------------------------
-# 🧪 Optional preflight check
-# -----------------------------------------------------------
-
 def validate_model_load() -> bool:
     """Explicit model‑load test for diagnostics."""
     try:
-        if os.path.exists(HARD_CODED_MODEL_PATH):
-            logging.info("[✅] Hardcoded ONNX model found locally.")
+        if os.path.exists(MODEL):
+            logging.info("[✅] Platform‑native model path exists.")
             return True
         else:
-            logging.warning("[⚠️] ONNX model missing — will trigger download automatically.")
+            logging.warning("[⚠️] Model file does not exist — check BasicPitch installation.")
             return False
     except Exception as e:
         logging.error(f"[❌] Model load validation failed: {e}")

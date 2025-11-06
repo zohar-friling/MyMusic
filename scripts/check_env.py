@@ -1,45 +1,38 @@
 # filename: scripts/check_env.py
-
 """
 Check that required libraries and system modules are available.
-Specifically confirms lzma support, critical for proper audio/MIDI processing.
+✅ Confirms proper environment for BasicPitch (CoreML or ONNX) + Librosa + Torch.
 """
 
-import sys
-import importlib
-import platform
+import sys, importlib, platform
 
-REQUIRED_MODULES = [
-    "librosa",
-    "basic_pitch",
-    "lzma",
-    "soundfile",
-    "numpy",
-    "scipy",
-    "torch",
-    "pretty_midi",
-    "resampy"
+REQUIRED = [
+    "librosa", "basic_pitch", "soundfile",
+    "numpy", "scipy", "torch", "pretty_midi", "resampy"
 ]
 
-print("🔍 Checking environment for required modules:\n")
-
-for module in REQUIRED_MODULES:
+print("🔍 Checking environment:\n")
+for m in REQUIRED:
     try:
-        importlib.import_module(module)
-        print(f"[✅] {module}")
+        importlib.import_module(m)
+        print(f"[✅] {m}")
     except ImportError:
-        print(f"[❌] {module} is MISSING")
+        print(f"[❌] {m} missing")
 
-# Additional test for lzma availability at system level
-print("\n🔧 Python build info:")
-print(f"  Python version  : {sys.version.split()[0]}")
-print(f"  Platform         : {platform.system()} {platform.machine()}")
-print(f"  Pyenv prefix     : {sys.prefix}")
+print("\n🔧 System Info:")
+print(f"  Python  : {sys.version.split()[0]}")
+print(f"  Platform: {platform.system()} {platform.machine()}")
+print(f"  Prefix  : {sys.prefix}")
+
+# Check CoreML or ONNX availability
+try:
+    import coremltools
+    print("[✅] CoreML backend available (macOS optimized)")
+except ImportError:
+    print("[ℹ️] CoreML not found – BasicPitch will use ONNX or TF backend instead.")
 
 try:
     import lzma
-    print("\n[✅] lzma is correctly available via stdlib")
-except ImportError as e:
-    print("\n[❌] lzma is missing — this likely means your pyenv Python was compiled WITHOUT lzma/xz support.")
-    print("    ➤ Rebuild Python with:")
-    print('      PYTHON_CONFIGURE_OPTS="--with-lzma" pyenv install 3.10.x')
+    print("[✅] lzma is available in stdlib")
+except ImportError:
+    print("[❌] lzma missing – recompile Python with '--with-lzma'")
