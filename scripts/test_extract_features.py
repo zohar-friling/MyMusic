@@ -10,11 +10,16 @@
 
 import sys
 from pathlib import Path
+
+# Add project root to sys.path for absolute imports
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import os, shutil, numpy as np, soundfile as sf
+import os
+import shutil
+import numpy as np
+import soundfile as sf
 from datetime import datetime
 
 from scripts.utils.utils import (
@@ -25,39 +30,59 @@ from scripts.utils.utils import (
     setup_logging,
     validate_model_load,
 )
-from scripts.extract_features import ensure_basicpitch_model_ready
 
+# ----------------------------
+# 🧪 Test constants
+# ----------------------------
 TEST_ROOT = Path("test_data")
 TEST_WAV = TEST_ROOT / "dataset/test_genre/test_silence.wav"
 TEST_OUT = TEST_ROOT / "dataset_features/test_genre/test_silence"
 TEST_LOG = TEST_ROOT / "logs"
 
-def clean(): shutil.rmtree(TEST_ROOT, ignore_errors=True)
 
+# ----------------------------
+# 🧼 Clean up prior test state
+# ----------------------------
+def clean():
+    shutil.rmtree(TEST_ROOT, ignore_errors=True)
+
+
+# ----------------------------
+# 🎧 Create a dummy WAV file (2 sec of silence)
+# ----------------------------
 def create_test_wav():
     os.makedirs(TEST_WAV.parent, exist_ok=True)
     silence = np.zeros(44100 * 2, dtype=np.float32)
     sf.write(TEST_WAV, silence, 44100)
     print(f"[🎧] Created test WAV: {TEST_WAV}")
 
+
+# ----------------------------
+# 🚀 Run the full pipeline on dummy input
+# ----------------------------
 def run_pipeline():
-    print("[⚙️] Validating model...")
-    ensure_basicpitch_model_ready()
+    print("[⚙️] Validating BasicPitch model...")
     if not validate_model_load():
         print("[⚠️] Model validation failed, but continuing with fallback...")
 
-    print("[🚀] Running pipeline...")
+    print("[🚀] Running extraction pipeline...")
     setup_logging(str(TEST_LOG))
-    assert is_audio_valid(str(TEST_WAV)), "Invalid WAV"
+
+    assert is_audio_valid(str(TEST_WAV)), "Invalid WAV file"
 
     midi_ok = extract_midi(str(TEST_WAV), str(TEST_OUT))
-    assert midi_ok, "MIDI extraction failed"
+    assert midi_ok, "❌ MIDI extraction failed"
 
     features = extract_audio_features(str(TEST_WAV))
-    assert features, "No features extracted"
+    assert features, "❌ No features extracted"
+
     save_json(features, str(TEST_OUT / "audio_features.json"))
     return True
 
+
+# ----------------------------
+# 🏁 Entrypoint
+# ----------------------------
 if __name__ == "__main__":
     clean()
     create_test_wav()
