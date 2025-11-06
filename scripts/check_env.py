@@ -1,59 +1,45 @@
-import importlib
-import subprocess
+# filename: scripts/check_env.py
+
+"""
+Check that required libraries and system modules are available.
+Specifically confirms lzma support, critical for proper audio/MIDI processing.
+"""
+
 import sys
-import os
+import importlib
 import platform
 
-REQUIRED_PACKAGES = [
-    "torch",
-    "torchaudio",
-    "demucs",
-    "basic_pitch",
+REQUIRED_MODULES = [
     "librosa",
+    "basic_pitch",
+    "lzma",
     "soundfile",
-    "tqdm",
-    "scipy",
     "numpy",
+    "scipy",
+    "torch",
+    "pretty_midi",
+    "resampy"
 ]
 
-def check_gpu_support():
-    try:
-        import torch
-        mps_available = torch.backends.mps.is_available()
-        print(f"✅ Torch version: {torch.__version__}")
-        print(f"   🧠 MPS GPU Available: {mps_available}")
-    except Exception as e:
-        print(f"❌ Torch check failed: {e}")
+print("🔍 Checking environment for required modules:\n")
 
-def check_package(package):
+for module in REQUIRED_MODULES:
     try:
-        module = importlib.import_module(package)
-        print(f"✅ {package} is installed ({module.__version__ if hasattr(module, '__version__') else 'no __version__'})")
+        importlib.import_module(module)
+        print(f"[✅] {module}")
     except ImportError:
-        print(f"❌ {package} is NOT installed")
+        print(f"[❌] {module} is MISSING")
 
-def check_command_line_tool(tool):
-    result = subprocess.run(['which', tool], capture_output=True, text=True)
-    if result.returncode == 0:
-        print(f"✅ Command-line tool '{tool}' is installed at: {result.stdout.strip()}")
-    else:
-        print(f"❌ Command-line tool '{tool}' is NOT found")
+# Additional test for lzma availability at system level
+print("\n🔧 Python build info:")
+print(f"  Python version  : {sys.version.split()[0]}")
+print(f"  Platform         : {platform.system()} {platform.machine()}")
+print(f"  Pyenv prefix     : {sys.prefix}")
 
-def main():
-    print("🎛️ System Info:")
-    print(f"   OS: {platform.system()} {platform.release()}")
-    print(f"   Python: {sys.executable}")
-    print("")
-
-    print("🔍 Checking Python packages:")
-    for pkg in REQUIRED_PACKAGES:
-        check_package(pkg)
-
-    print("\n⚙️ Checking CLI tools:")
-    check_command_line_tool("demucs")
-
-    print("\n🧠 GPU (MPS) Support:")
-    check_gpu_support()
-
-if __name__ == "__main__":
-    main()
+try:
+    import lzma
+    print("\n[✅] lzma is correctly available via stdlib")
+except ImportError as e:
+    print("\n[❌] lzma is missing — this likely means your pyenv Python was compiled WITHOUT lzma/xz support.")
+    print("    ➤ Rebuild Python with:")
+    print('      PYTHON_CONFIGURE_OPTS="--with-lzma" pyenv install 3.10.x')

@@ -1,0 +1,109 @@
+
+# MyMusic Feature Extraction Pipeline – Issue Log and Prompt Guide
+
+## 🧠 Summary
+
+This document captures the major issues encountered and resolved during the development and optimization of the music-processing pipeline, running on macOS (Apple Silicon M3 Ultra), with Python 3.11, PyTorch 2.5.1, Demucs v4.0.1, BasicPitch v0.4.0, and Librosa.
+
+---
+
+## ✅ Issues Encountered and Fixes Applied
+
+### 1. Demucs: MPS Backend Limit (Output channels > 65536)
+- **Issue:** `NotImplementedError` when running Demucs model on MPS.
+- **Fix:** Set `PYTORCH_ENABLE_MPS_FALLBACK=1` and fallback to CPU inside `separate_stems()` with a `try/except`.
+
+---
+
+### 2. BasicPitch: `predict_and_save()` Missing Arguments
+- **Issue:** Incorrect number of arguments passed to `predict_and_save()`.
+- **Fix:** Passed all 5 required parameters explicitly: `model_or_model_path`, `save_notes`, `save_model_outputs`, etc.
+
+---
+
+### 3. AttributeError: `'BagOfModels' object has no attribute 'device'`
+- **Cause:** Incorrect attempt to access `.device` on model.
+- **Fix:** Removed unnecessary attribute access; used proper `.to(device)` model transfers.
+
+---
+
+### 4. Demucs Mono/Stereo Handling
+- **Issue:** `RuntimeError` due to shape mismatch.
+- **Fix:** Standardized all inputs to stereo using NumPy array shape validation.
+
+---
+
+### 5. Librosa: `librosa.feature.rhythm.tempo` AttributeError
+- **Issue:** No attribute `rhythm` in Librosa.
+- **Fix:** Replaced with `librosa.beat.tempo()` and added robust fallback if unavailable.
+
+---
+
+### 6. ArgumentError: `extract_audio_features()` takes 1 positional argument but 2 were given
+- **Fix:** Modified signature to `extract_audio_features(wav_path, output_dir)` for logging output.
+
+---
+
+### 7. Log Writing Error: `log_performance() got an unexpected keyword argument 'status'`
+- **Fix:** Updated function definition to accept `status` argument.
+
+---
+
+### 8. Duplicate Processing of Files
+- **Fix:** Implemented per-track existence + quality check using JSON sidecar and output `.mid` presence.
+
+---
+
+### 9. CPU Underutilization (~50%)
+- **Fix:** Used `ProcessPoolExecutor(max_workers=os.cpu_count())` to fully parallelize across all physical cores.
+
+---
+
+## 📂 Final Folder Structure
+
+```
+MyMusic/
+├── dataset/
+│   ├── jazz/
+│   │   └── wav/*.wav
+│   └── trance/
+│       └── wav/*.wav
+├── dataset_features/
+│   └── genre/track_name/
+├── logs/
+│   └── feature_extraction_YYYYMMDD_HHMMSS.log
+├── scripts/
+│   ├── extract_features.py
+│   └── utils/
+│       └── utils.py
+```
+
+---
+
+## 🚀 Final Prompt (v2025.10.23)
+
+```
+python3 scripts/extract_features.py \
+  --input_dir "dataset" \
+  --output_dir "dataset_features" \
+  --log_dir "logs"
+```
+
+This will:
+- Skip completed tracks with valid output
+- Log success/errors per track in real time
+- Leverage full CPU cores for parallel processing
+- Handle Demucs/BasicPitch/MIDI/Librosa extraction
+- Provide `.json`, `.mid`, `.wav` outputs per track
+
+---
+
+## ⬆️ GitHub Push Instructions
+
+```bash
+git add scripts/ logs/ dataset_features/ *.txt
+git commit -m "🚀 Final working feature extraction pipeline with parallel processing and quality checks"
+git push origin main
+```
+
+✅ Done.

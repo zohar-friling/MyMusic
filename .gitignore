@@ -1,80 +1,48 @@
-__pycache__/
-*.pyc
-*.zip
-*.log
-*.mid
+# .gitignore for MyMusic audio processing project
+
+# 🔒 Ignore audio datasets and outputs
+/dataset/
+/dataset_features/
+/logs/
+
+# 🔇 Ignore audio and MIDI files
 *.wav
-dataset/
-dataset_features/
-.env
-.idea/
-.vscode/
-.DS_Store
-# Ignore audio datasets and extracted features
-dataset/
-dataset_features/
+*.mp3
+*.flac
+*.mid
 
-# Ignore logs and performance summaries
-logs/
-
-# Ignore Python cache and compiled files
+# 🧹 Ignore Python cache and compiled files
 __pycache__/
 *.py[cod]
 *.so
 *.pyd
 
-# Jupyter and VSCode files
-.ipynb_checkpoints/
-.vscode/
-
-# Mac system files
-.DS_Store
-
-# Ignore environment or model weight folders if any
+# 🧪 Ignore virtual environments and model weights
+.venv/
 venv/
-.env/
+.env
 *.ckpt
 *.pt
 *.onnx
 *.tflite
 
-# Only track models you explicitly add
-models/
-!models/README.md  # (optional stub to keep folder tracked)# Audio datasets and outputs
-dataset/
-dataset_features/
-logs/
-
-# Audio + MIDI files (generated artifacts)
-*.wav
-*.mid
-
-# Logs and archives
-*.log
-*.zip
-
-# Python cache and compiled files
-__pycache__/
-*.py[cod]
-*.so
-*.pyd
-
-# IDE and editor files
+# 📓 Ignore Jupyter and VSCode files
+.ipynb_checkpoints/
 .vscode/
 .idea/
-.ipynb_checkpoints/
 
-# macOS system files
+# 🍏 macOS system files
 .DS_Store
 
-# Environment and model artifacts
-.env
-venv/
-*.ckpt
-*.pt
-*.onnx
-*.tflite
-
-# Keep the models folder but allow manual inclusion
+# ✅ Keep model directory but ignore contents unless explicitly added
 models/
 !models/README.md
+
+# 🚫 Ignore logs and performance tracking files
+*.log
+performance_summary.json
+
+# 🔁 Ignore backups or temp files
+*.tmp
+*.bak
+*~
