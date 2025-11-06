@@ -1,22 +1,22 @@
 # filename: scripts/utils/utils.py
 """
 Utility functions for the MyMusic feature extraction pipeline.
-✅ Compatible with BasicPitch 0.4.x (Python 3.10–3.11 / macOS ARM64, CoreML backend)
+✅ Fully compatible with BasicPitch 0.4.x (Python 3.10–3.11 / macOS ARM64 + CoreML backend)
 
-🧠 FINALIZED VERSION – NOV 2025
+🧠 FINAL PATCH – NOV 2025
 ────────────────────────────
-This version removes all references to the deprecated `load_model()`
-(which no longer exists in current BasicPitch builds) and uses
-BasicPitch’s official constant `ICASSP_2022_MODEL_PATH`.
+This version removes all references to missing BasicPitch constants
+(e.g., ICASSP_2022_MODEL_PATH) and dynamically resolves the model path.
 
 🪄 Behavior summary:
-  • macOS automatically uses CoreML (.mlmodel)
-  • Linux/Windows automatically use ONNX (.onnx)
-  • No manual download or cache needed
-  • No dead HuggingFace links or missing model errors
+  • macOS → CoreML (.mlmodel)
+  • Linux/Windows → ONNX (.onnx)
+  • Automatically detects the installed path under basic_pitch/saved_models/
+  • No hardcoded or external downloads required.
 """
 
 import os
+import platform
 import json
 import logging
 import librosa
@@ -25,14 +25,43 @@ import numpy as np
 import inspect
 from datetime import datetime
 
-# ✅ Import the stable BasicPitch API
-# - predict_and_save(): main inference method
-# - ICASSP_2022_MODEL_PATH: correct model file for this platform
+# ✅ Import only the stable API function
 from basic_pitch.inference import predict_and_save
-from basic_pitch.models import ICASSP_2022_MODEL_PATH
 
-# ✅ Core model path (resolves to .mlmodel on macOS or .onnx elsewhere)
-MODEL = ICASSP_2022_MODEL_PATH
+
+# -----------------------------------------------------------
+# 🧭 Model path auto‑resolution
+# -----------------------------------------------------------
+def resolve_basicpitch_model() -> str:
+    """
+    Dynamically locate the BasicPitch model inside the installed package.
+    Falls back gracefully if path cannot be found.
+
+    Returns:
+        str: Path to the CoreML (.mlmodel) or ONNX (.onnx) model file
+    """
+    try:
+        import basic_pitch
+        root = os.path.dirname(basic_pitch.__file__)
+        # macOS (Darwin) uses CoreML; other OSes use ONNX
+        if platform.system() == "Darwin":
+            model_path = os.path.join(root, "saved_models/icassp_2022/model.mlmodel")
+        else:
+            model_path = os.path.join(root, "saved_models/icassp_2022/model.onnx")
+
+        if not os.path.exists(model_path):
+            logging.warning(f"[⚠️] Expected model not found at {model_path}")
+        else:
+            logging.info(f"[✅] Using BasicPitch model: {model_path}")
+        return model_path
+
+    except Exception as e:
+        logging.error(f"[❌] Failed to resolve BasicPitch model path: {e}")
+        return None
+
+
+# ✅ Global model constant
+MODEL = resolve_basicpitch_model()
 
 
 # -----------------------------------------------------------
@@ -49,7 +78,6 @@ def setup_logging(log_dir: str) -> str:
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
     )
-    # StreamHandler lets you see logs in the console too
     logging.getLogger().addHandler(logging.StreamHandler())
     return log_file
 
@@ -60,9 +88,6 @@ def setup_logging(log_dir: str) -> str:
 def is_audio_valid(filepath: str) -> bool:
     """
     Validate that an audio file exists, is readable, and non-empty.
-
-    Returns:
-        bool: True if audio file is valid.
     """
     try:
         if not os.path.exists(filepath) or os.path.getsize(filepath) == 0:
@@ -78,10 +103,8 @@ def is_audio_valid(filepath: str) -> bool:
 # -----------------------------------------------------------
 def extract_audio_features(file_path: str) -> dict:
     """
-    Extract simple rhythmic and onset-based features using Librosa.
-
-    Returns:
-        dict: Contains 'tempo' (float) and 'onsets' (list of seconds)
+    Extract basic rhythmic and onset features from an audio file.
+    Returns tempo (BPM) and onset timings (seconds).
     """
     try:
         y, sr = librosa.load(file_path, sr=None, mono=True)
@@ -100,18 +123,16 @@ def extract_audio_features(file_path: str) -> dict:
 # -----------------------------------------------------------
 def extract_midi(file_path: str, output_dir: str) -> bool:
     """
-    Extract a MIDI file from an audio clip using BasicPitch.
-    Uses the correct model automatically (CoreML or ONNX).
-
-    Returns:
-        bool: True if successful.
+    Extract MIDI from an audio file using BasicPitch.
+    Uses platform‑appropriate model path.
     """
     os.makedirs(output_dir, exist_ok=True)
     try:
         sig = inspect.signature(predict_and_save)
 
+        # ✅ Modern API with explicit model path
         if "model_or_model_path" in sig.parameters:
-            logging.info(f"[🎹] Using BasicPitch model for {os.path.basename(file_path)}")
+            logging.info(f"[🎹] Running BasicPitch on {os.path.basename(file_path)}")
             predict_and_save(
                 [file_path],
                 output_directory=output_dir,
@@ -122,8 +143,8 @@ def extract_midi(file_path: str, output_dir: str) -> bool:
                 sonify_midi=False,
             )
         else:
-            # 🧩 Fallback for older library versions (rare)
-            logging.info(f"[🎹] Legacy predict_and_save() for {os.path.basename(file_path)}")
+            # 🕹 Legacy API fallback (rare)
+            logging.info(f"[🎹] Legacy BasicPitch mode for {os.path.basename(file_path)}")
             predict_and_save(
                 [file_path],
                 output_directory=output_dir,
@@ -144,7 +165,7 @@ def extract_midi(file_path: str, output_dir: str) -> bool:
 # 💾 JSON & performance helpers
 # -----------------------------------------------------------
 def save_json(data: dict, output_path: str):
-    """Save feature data as JSON file."""
+    """Persist extracted feature data to disk."""
     try:
         with open(output_path, "w") as f:
             json.dump(data, f, indent=2)
@@ -153,7 +174,7 @@ def save_json(data: dict, output_path: str):
 
 
 def log_performance(track_name: str, start_time: datetime, end_time: datetime, status: str, log_dir: str):
-    """Append per‑track timing and status to a log file."""
+    """Append per‑track timing and status to performance log."""
     try:
         duration = (end_time - start_time).total_seconds()
         with open(os.path.join(log_dir, "performance_summary.log"), "a") as f:
@@ -163,16 +184,16 @@ def log_performance(track_name: str, start_time: datetime, end_time: datetime, s
 
 
 # -----------------------------------------------------------
-# 🧪 Model availability check
+# 🧪 Model validation
 # -----------------------------------------------------------
 def validate_model_load() -> bool:
-    """Check if the BasicPitch model file exists."""
+    """Check that the resolved BasicPitch model file actually exists."""
     try:
-        if os.path.exists(MODEL):
-            logging.info(f"[✅] BasicPitch model found at {MODEL}")
+        if MODEL and os.path.exists(MODEL):
+            logging.info(f"[✅] BasicPitch model verified: {MODEL}")
             return True
         else:
-            logging.warning("[⚠️] Model file missing – check your installation.")
+            logging.warning("[⚠️] BasicPitch model missing or unresolved.")
             return False
     except Exception as e:
         logging.error(f"[❌] Model validation failed: {e}")
