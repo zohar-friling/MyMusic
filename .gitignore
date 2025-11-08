@@ -4,6 +4,8 @@
 /dataset/
 /dataset_features/
 /logs/
+/fusion_models/
+/dataset_features/
 
 # 🔇 Ignore audio and MIDI files
 *.wav

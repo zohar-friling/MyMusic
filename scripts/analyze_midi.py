@@ -3,6 +3,12 @@
 # Stage 3 – MIDI Structural Analysis (flat output mode)
 # Run from:  MyMusic/
 # Output pattern: fusion_models/<genre>/<track_name>.analysis.json
+#
+# 🛠️ Added:
+#  - Real-time console updates
+#  - Genre-level and per-track performance logs
+#  - Better handling of empty/missing folders
+#  - Extensive comments for maintainability
 # ============================================
 
 import os
@@ -18,15 +24,16 @@ import numpy as np
 import pretty_midi
 from music21 import converter, chord
 
-# ---- Use your Stage-2 utils (if present) ----
+# ---- Use Stage-2 utils if available, else fallback simple logger ----
 try:
     from scripts.utils.utils import init_logger, log_performance
 except Exception:
     def init_logger(*args, **kwargs):
         pass
     def log_performance(log_file, track_name, status, elapsed):
+        """Fallback lightweight logger writing JSONL rows."""
         record = {
-            "ts": time.time(),
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
             "track": track_name,
             "status": status,
             "elapsed_sec": round(elapsed, 3),
@@ -35,7 +42,7 @@ except Exception:
             f.write(json.dumps(record) + "\n")
 
 # ---------- Configuration ----------
-ROOT = Path(__file__).resolve().parents[1]     # points to MyMusic/
+ROOT = Path(__file__).resolve().parents[1]     # Points to MyMusic/
 DATASET_FEATURES = ROOT / "dataset_features"
 FUSION_MODELS = ROOT / "fusion_models"
 LOGS_DIR = ROOT / "logs"
@@ -49,10 +56,10 @@ SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 def safe_name(name: str) -> str:
     """Sanitize filenames for cross-platform safety."""
-    name = name.strip().replace(" ", "_")
-    return SAFE_NAME_RE.sub("_", name)
+    return SAFE_NAME_RE.sub("_", name.strip().replace(" ", "_"))
 
 def detect_key(midi_path: Path) -> str:
+    """Infer musical key using music21."""
     try:
         s = converter.parse(str(midi_path))
         k = s.analyze("key")
@@ -61,6 +68,7 @@ def detect_key(midi_path: Path) -> str:
         return "Unknown"
 
 def extract_chords(midi_path: Path):
+    """Extract coarse chord names from MIDI via chordify()."""
     try:
         s = converter.parse(str(midi_path))
         ch = s.chordify().recurse().getElementsByClass(chord.Chord)
@@ -75,18 +83,14 @@ def extract_chords(midi_path: Path):
         return []
 
 def compute_polyphony(pm: pretty_midi.PrettyMIDI) -> float:
+    """Average number of simultaneous notes over track duration."""
     spans = [(n.start, n.end) for inst in pm.instruments for n in inst.notes]
     if not spans:
         return 0.0
     spans.sort()
-    events = []
-    for s, e in spans:
-        events.append((s, 1))
-        events.append((e, -1))
+    events = [(s, 1) for s, _ in spans] + [(e, -1) for _, e in spans]
     events.sort()
-    active = 0
-    last_t = events[0][0]
-    area = 0.0
+    active, last_t, area = 0, events[0][0], 0.0
     for t, delta in events:
         area += active * (t - last_t)
         active += delta
@@ -95,13 +99,17 @@ def compute_polyphony(pm: pretty_midi.PrettyMIDI) -> float:
     return round(area / duration, 3)
 
 def motif_density(onsets):
+    """Heuristic: proportion of short inter-onset intervals (density)."""
     if len(onsets) < 2:
         return 0.0
     diffs = np.diff(sorted(onsets))
+    if not len(diffs):
+        return 0.0
     med = np.median(diffs)
     return round(float((diffs < med).sum()) / len(diffs), 3)
 
 def note_distribution(pm: pretty_midi.PrettyMIDI):
+    """Percentage of notes in low/mid/high pitch ranges."""
     pitches = [n.pitch for inst in pm.instruments for n in inst.notes]
     if not pitches:
         return {"low": 0, "mid": 0, "high": 0}
@@ -117,22 +125,26 @@ def note_distribution(pm: pretty_midi.PrettyMIDI):
 
 # ---------- Core ----------
 def analyze_track(mid_path: Path, json_path: Path, genre: str):
+    """Analyze one MIDI+JSON pair and write an analysis.json."""
     start = time.time()
     track_name = safe_name(mid_path.stem)
     out_dir = FUSION_MODELS / genre
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = out_dir / f"{track_name}.analysis.json"
 
+    # Skip if already processed
     if out_file.exists():
         log_performance(LOG_FILE, track_name, "skipped_exists", time.time() - start)
         return {"track": track_name, "status": "skipped"}
 
     try:
+        # Load source MIDI and feature JSON
         pm = pretty_midi.PrettyMIDI(str(mid_path))
         feat = json.loads(Path(json_path).read_text())
         tempo = float(feat.get("tempo", 0.0))
         onsets = list(feat.get("onsets", []))
 
+        # Derived musical features
         key_detected = detect_key(mid_path)
         chords = extract_chords(mid_path)
         poly = compute_polyphony(pm)
@@ -140,6 +152,7 @@ def analyze_track(mid_path: Path, json_path: Path, genre: str):
         dist = note_distribution(pm)
         duration = round(pm.get_end_time(), 3)
 
+        # Naive sectioning (placeholder for ML-based segmentation)
         sections = ["single_section"]
         if duration >= 60:
             sections = ["intro", "main", "outro"]
@@ -165,41 +178,60 @@ def analyze_track(mid_path: Path, json_path: Path, genre: str):
         }
 
         out_file.write_text(json.dumps(analysis, indent=2))
-        log_performance(LOG_FILE, track_name, "success", time.time() - start)
-        return {"track": track_name, "status": "done"}
+        elapsed = time.time() - start
+        log_performance(LOG_FILE, track_name, "success", elapsed)
+        tqdm.write(f"✅ {genre}/{track_name} analyzed in {elapsed:.2f}s")
+        return {"track": track_name, "status": "done", "elapsed": elapsed}
 
     except Exception as e:
-        log_performance(LOG_FILE, track_name, f"error: {e}", time.time() - start)
-        return {"track": track_name, "status": f"error: {e}"}
+        elapsed = time.time() - start
+        log_performance(LOG_FILE, track_name, f"error: {e}", elapsed)
+        tqdm.write(f"❌ {genre}/{track_name} failed ({e})")
+        return {"track": track_name, "status": f"error: {e}", "elapsed": elapsed}
 
 
 def process_genre(genre_path: Path):
+    """Process all MIDIs inside one genre folder."""
     genre = genre_path.name
     mid_dir = genre_path / "mid"
     json_dir = genre_path / "json"
     if not mid_dir.exists() or not json_dir.exists():
-        return []
-    mids = list(mid_dir.glob("*.mid"))
-    if not mids:
+        tqdm.write(f"⚠️  Missing directories for {genre}, skipping.")
         return []
 
+    mids = list(mid_dir.glob("*.mid"))
+    if not mids:
+        tqdm.write(f"⚠️  No MIDI files found for {genre}.")
+        return []
+
+    tqdm.write(f"\n▶️  Processing genre: {genre} ({len(mids)} tracks)")
     results = []
+
     with ThreadPoolExecutor(max_workers=os.cpu_count()) as ex:
-        futs = []
+        futures = []
         for mid_file in mids:
             json_file = json_dir / f"{mid_file.stem}.json"
-            if json_file.exists():
-                futs.append(ex.submit(analyze_track, mid_file, json_file, genre))
-            else:
+            if not json_file.exists():
                 log_performance(LOG_FILE, mid_file.stem, "missing_json", 0.0)
-        for f in tqdm(as_completed(futs), total=len(futs), desc=f"{genre}"):
+                tqdm.write(f"⚠️  Missing JSON for {mid_file.name}")
+                continue
+            futures.append(ex.submit(analyze_track, mid_file, json_file, genre))
+
+        for f in tqdm(as_completed(futures), total=len(futures), desc=f"{genre}", leave=False):
             results.append(f.result())
+
+    # Genre-level summary log entry
+    done = sum(1 for r in results if r["status"].startswith("done"))
+    skipped = sum(1 for r in results if "skipped" in r["status"])
+    errors = sum(1 for r in results if "error" in r["status"])
+    tqdm.write(f"✅ Finished {genre}: {done} done, {skipped} skipped, {errors} errors.")
     return results
 
 
 def main():
+    """Main controller for Stage 3 analysis."""
     print("🎼 Stage 3: MIDI Structural Analysis (flat outputs)")
-    print(f"Logs → {LOG_FILE}")
+    print(f"Logs → {LOG_FILE}\n")
     start = time.time()
 
     try:
@@ -208,14 +240,25 @@ def main():
         pass
 
     summary = {}
-    for genre_path in sorted(DATASET_FEATURES.iterdir()):
-        if genre_path.is_dir():
-            summary[genre_path.name] = process_genre(genre_path)
+    genres = sorted([p for p in DATASET_FEATURES.iterdir() if p.is_dir()])
+    total_genres = len(genres)
+    if not total_genres:
+        print("❌ No genre folders found in dataset_features/. Exiting.")
+        return
+
+    print(f"📦 Found {total_genres} genre folders.\n")
+
+    for genre_path in genres:
+        tqdm.write(f"--- Genre: {genre_path.name} ---")
+        res = process_genre(genre_path)
+        summary[genre_path.name] = res
 
     elapsed = round(time.time() - start, 2)
-    print(f"\n✅ Completed Stage 3 in {elapsed}s")
-    print(f"Outputs → fusion_models/<genre>/<track_name>.analysis.json")
+    print(f"\n🕒 Total runtime: {elapsed}s")
+    print(f"📁 Outputs saved under fusion_models/<genre>/<track>.analysis.json")
+    print(f"🧾 Logs written to {LOG_FILE}")
 
+    # Write global summary JSON for post-run inspection
     with open(LOG_FILE.with_suffix(".summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
 
