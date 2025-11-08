@@ -27,7 +27,7 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 
-# --- Project roots ---
+# --- Project roots and directories ---
 ROOT = Path(__file__).resolve().parents[1]
 FUSION_DIR = ROOT / "fusion_models"
 CACHE_DIR = FUSION_DIR / "cache"
@@ -35,7 +35,7 @@ LOGS_DIR = ROOT / "logs"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
-# --- Utils fallback (logger + jsonl) ---
+# --- Logger + JSONL fallback if utils not found ---
 try:
     sys.path.append(str(ROOT))
     from scripts.utils.utils import get_logger, jsonl_open
@@ -49,6 +49,7 @@ except Exception:
             ch.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
             logger.addHandler(ch)
         return logger
+
     class jsonl_open:
         def __init__(self, path): self.path = Path(path)
         def __enter__(self): self.f = open(self.path, "a", encoding="utf-8"); return self
@@ -57,28 +58,29 @@ except Exception:
 
 logger = get_logger("train_fusion_model")
 
-# --- Files ---
-AE_MODEL_PT = FUSION_DIR / "fusion_core.pt"                 # produced in Step 2
-DATASET_JSONL = CACHE_DIR / "fusion_dataset.jsonl"          # produced in Step 1
+# --- Input/output paths ---
+AE_MODEL_PT = FUSION_DIR / "fusion_core.pt"
+DATASET_JSONL = CACHE_DIR / "fusion_dataset.jsonl"
 RUN_LOG = LOGS_DIR / f"fusion_train_{time.strftime('%Y%m%d_%H%M%S')}.jsonl"
 
-# --- Genre config (order fixed to keep IDs stable) ---
+# --- Genre configuration ---
 GENRE_ORDER = ["classical", "jazz", "hijaz", "salsa", "trance"]
 GENRE_TO_ID = {g: i for i, g in enumerate(GENRE_ORDER)}
 N_GENRES = len(GENRE_ORDER)
 
 
 # -------------------------
-#  Utilities
+# Utility functions
 # -------------------------
 def one_hot(idx: int, n: int) -> torch.Tensor:
+    """Create a one-hot vector of length n for a given index."""
     v = torch.zeros(n, dtype=torch.float32)
     v[idx] = 1.0
     return v
 
 
 def load_dataset(jsonl_path: Path) -> Tuple[np.ndarray, np.ndarray]:
-    """Return standardized feature matrix X (already normalized numbers in jsonl) and genre ids y."""
+    """Return normalized feature matrix X and corresponding genre indices y."""
     X, y = [], []
     with open(jsonl_path, "r", encoding="utf-8") as f:
         for line in f:
@@ -92,7 +94,7 @@ def load_dataset(jsonl_path: Path) -> Tuple[np.ndarray, np.ndarray]:
 
 
 def load_autoencoder(path: Path):
-    """Load AE checkpoint dictionary saved by build_genre_embeddings.py"""
+    """Load the AutoEncoder checkpoint from fusion_core.pt."""
     ckpt = torch.load(path, map_location="cpu")
     required = ["state_dict", "input_dim", "latent_dim", "scaler_mean", "scaler_scale"]
     for k in required:
@@ -102,10 +104,10 @@ def load_autoencoder(path: Path):
 
 
 # -------------------------
-#  Models
+#  Model definitions
 # -------------------------
 class AEEncoder(nn.Module):
-    """Mirror the encoder architecture used in build_genre_embeddings.py"""
+    """Mirror the encoder architecture used in build_genre_embeddings.py."""
     def __init__(self, input_dim: int, latent_dim: int):
         super().__init__()
         self.net = nn.Sequential(
@@ -113,12 +115,15 @@ class AEEncoder(nn.Module):
             nn.Linear(512, 256), nn.ReLU(),
             nn.Linear(256, latent_dim)
         )
-    def forward(self, x):
+    def forward(self, x):  # simple forward pass
         return self.net(x)
 
 
 class Translator(nn.Module):
-    """Conditional translator: z, src_onehot, tgt_onehot -> z_hat (latent in target style)"""
+    """
+    Conditional translator that learns to move from one genre latent space
+    to another using source & target one-hot genre encodings.
+    """
     def __init__(self, latent_dim: int, n_genres: int = 5):
         super().__init__()
         self.fc = nn.Sequential(
@@ -132,7 +137,7 @@ class Translator(nn.Module):
 
 
 # -------------------------
-#  Training
+#  Main training loop
 # -------------------------
 def train(latent_dim: int = 256,
           epochs: int = 30,
@@ -140,6 +145,7 @@ def train(latent_dim: int = 256,
           batch: int = 256,
           grad_clip: float = 1.0):
 
+    # Safety checks
     if not AE_MODEL_PT.exists():
         logger.error("Missing fusion_core.pt from build_genre_embeddings.py")
         sys.exit(2)
@@ -147,18 +153,26 @@ def train(latent_dim: int = 256,
         logger.error("Missing fusion_dataset.jsonl. Run assemble_fusion_dataset.py first.")
         sys.exit(3)
 
-    # Load AE & rebuild encoder
+    # --- Load AutoEncoder checkpoint ---
     ae = load_autoencoder(AE_MODEL_PT)
     input_dim = int(ae["input_dim"])
     ckpt_state = ae["state_dict"]
 
+    # --- Build encoder and load weights with correct key mapping ---
     encoder = AEEncoder(input_dim=input_dim, latent_dim=latent_dim)
-    enc_sd = {k.replace("encoder.", ""): v for k, v in ckpt_state.items() if k.startswith("encoder.")}
-    encoder.load_state_dict(enc_sd)
+    enc_sd = {}
+    for k, v in ckpt_state.items():
+        if k.startswith("encoder."):
+            # rename keys from "encoder.0.weight" -> "net.0.weight"
+            new_key = "net." + k.replace("encoder.", "")
+            enc_sd[new_key] = v
+    encoder.load_state_dict(enc_sd, strict=True)
+
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     encoder.to(device).eval()
+    logger.info(f"Encoder loaded successfully on {device}")
 
-    # Load dataset (already normalized per assemble_fusion_dataset stats)
+    # --- Load dataset (already normalized) ---
     X, y = load_dataset(DATASET_JSONL)
     scaler_mean = np.array(ae["scaler_mean"], dtype=np.float32)
     scaler_scale = np.array(ae["scaler_scale"], dtype=np.float32)
@@ -166,16 +180,16 @@ def train(latent_dim: int = 256,
     X = torch.tensor(X, dtype=torch.float32, device=device)
     y = torch.tensor(y, dtype=torch.int64, device=device)
 
-    # Precompute latent embeddings Z
+    # --- Compute latent representations Z ---
     with torch.no_grad():
         Z = encoder(X)
 
-    # Translator + optimizer
+    # --- Initialize translator model ---
     translator = Translator(latent_dim=latent_dim, n_genres=N_GENRES).to(device)
     opt = torch.optim.Adam(translator.parameters(), lr=lr)
     loss_fn = nn.MSELoss()
 
-    # Precompute per-genre centroids in latent space (updated each epoch)
+    # --- Helper: compute per-genre centroids in latent space ---
     def compute_centroids(Z_latent: torch.Tensor, y_labels: torch.Tensor) -> torch.Tensor:
         cents = []
         for gid in range(N_GENRES):
@@ -184,58 +198,60 @@ def train(latent_dim: int = 256,
                 cents.append(Z_latent[mask].mean(dim=0))
             else:
                 cents.append(torch.zeros_like(Z_latent[0]))
-        return torch.stack(cents, dim=0)  # [N_GENRES, latent_dim]
+        return torch.stack(cents, dim=0)
 
     n = Z.size(0)
     logger.info(f"Training translator on {n} embeddings…")
+
+    # --- Training loop ---
     with jsonl_open(RUN_LOG) as jl:
         for epoch in range(1, epochs + 1):
-            # Recompute centroids each epoch for stability
-            centroids = compute_centroids(Z, y)
-
+            centroids = compute_centroids(Z, y)  # update centroids each epoch
             perm = torch.randperm(n, device=device)
-            total = 0.0
-            for i in range(0, n, batch):
-                idx = perm[i:i+batch]
-                z_src = Z[idx]                      # [B, latent]
-                src = y[idx]                        # [B]
+            total_loss = 0.0
 
-                # Sample targets != source
+            for i in range(0, n, batch):
+                idx = perm[i:i + batch]
+                z_src = Z[idx]
+                src = y[idx]
+
+                # Random target genre different from source
                 tgt = torch.randint(low=0, high=N_GENRES, size=src.shape, device=device)
                 tgt = torch.where(tgt == src, (tgt + 1) % N_GENRES, tgt)
 
-                # One-hot encode
+                # One-hot encodings
                 src_oh = torch.stack([one_hot(int(s), N_GENRES) for s in src.tolist()]).to(device)
                 tgt_oh = torch.stack([one_hot(int(t), N_GENRES) for t in tgt.tolist()]).to(device)
 
-                # Predict target latent
-                z_hat = translator(z_src, src_oh, tgt_oh)           # [B, latent]
-                z_tgt_centroid = centroids[tgt]                     # [B, latent]
+                # Forward pass: translate latent + compare to target centroid
+                z_hat = translator(z_src, src_oh, tgt_oh)
+                z_tgt = centroids[tgt]
+                loss = loss_fn(z_hat, z_tgt)
 
-                # Loss: bring predicted latent close to target centroid
-                loss = loss_fn(z_hat, z_tgt_centroid)
-
-                # Optimize
+                # Backprop + optimization
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
-                if grad_clip is not None and grad_clip > 0:
+                if grad_clip > 0:
                     torch.nn.utils.clip_grad_norm_(translator.parameters(), grad_clip)
                 opt.step()
 
-                total += float(loss.detach().cpu()) * z_src.size(0)
+                total_loss += float(loss.detach().cpu()) * len(idx)
 
-            epoch_loss = total / n
-            jl.write({"event": "translator_epoch", "epoch": epoch, "loss": epoch_loss})
-            logger.info(f"Epoch {epoch}/{epochs} – translator loss: {epoch_loss:.6f}")
+            avg_loss = total_loss / n
+            jl.write({"event": "translator_epoch", "epoch": epoch, "loss": avg_loss})
+            logger.info(f"Epoch {epoch}/{epochs} – translator loss: {avg_loss:.6f}")
 
-    # Augment and resave fusion_core.pt with translator
+    # --- Save translator into existing AE checkpoint ---
     ae_aug = torch.load(AE_MODEL_PT, map_location="cpu")
     ae_aug["translator_state_dict"] = translator.state_dict()
     ae_aug["genre_order"] = GENRE_ORDER
     torch.save(ae_aug, AE_MODEL_PT)
-    logger.info("Translator trained and appended to fusion_core.pt")
+    logger.info("✅ Translator trained and appended to fusion_core.pt")
 
 
+# -------------------------
+#  CLI entry point
+# -------------------------
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
@@ -245,6 +261,7 @@ if __name__ == "__main__":
     ap.add_argument("--batch", type=int, default=256)
     ap.add_argument("--grad_clip", type=float, default=1.0)
     args = ap.parse_args()
+
     train(latent_dim=args.latent,
           epochs=args.epochs,
           lr=args.lr,
