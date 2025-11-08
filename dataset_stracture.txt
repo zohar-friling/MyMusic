@@ -1,0 +1,15 @@
+dataset/classical:
+dataset/classical/mp3:
+dataset/classical/wav:
+dataset/hijaz:
+dataset/hijaz/mp3:
+dataset/hijaz/wav:
+dataset/jazz:
+dataset/jazz/mp3:
+dataset/jazz/wav:
+dataset/salsa:
+dataset/salsa/mp3:
+dataset/salsa/wav:
+dataset/trance:
+dataset/trance/mp3:
+dataset/trance/wav:
