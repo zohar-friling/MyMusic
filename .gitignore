@@ -46,3 +46,8 @@ performance_summary.json
 *.tmp
 *.bak
 *~
+.DS_Store
+logs/
+__pycache__/
+*.jsonl
+.DS_Store
