@@ -1,0 +1,105 @@
+{
+  "track_id": "10_Mass_in_B_Minor__BWV_232__Qui_Sedes_Ad_Dexteram_Patris",
+  "created": "2025-11-09T12:07:49Z",
+  "model_hash": null,
+  "steps": {
+    "classical_to_jazz": [
+      {
+        "version": 1,
+        "dir": "version_01",
+        "params": {
+          "sigma": 0.05,
+          "beta": 0.8,
+          "temperature": 0.9,
+          "seed": 111
+        },
+        "cosine_to_source": 0.4250428217273738,
+        "has_features": false
+      },
+      {
+        "version": 2,
+        "dir": "version_02",
+        "params": {
+          "sigma": 0.05,
+          "beta": 0.8,
+          "temperature": 1.0,
+          "seed": 111
+        },
+        "cosine_to_source": 0.4250428217273738,
+        "has_features": false
+      },
+      {
+        "version": 3,
+        "dir": "version_03",
+        "params": {
+          "sigma": 0.05,
+          "beta": 1.0,
+          "temperature": 0.9,
+          "seed": 111
+        },
+        "cosine_to_source": -0.004467575496997838,
+        "has_features": false
+      },
+      {
+        "version": 4,
+        "dir": "version_04",
+        "params": {
+          "sigma": 0.05,
+          "beta": 1.0,
+          "temperature": 1.0,
+          "seed": 111
+        },
+        "cosine_to_source": -0.004467575496997838,
+        "has_features": false
+      },
+      {
+        "version": 5,
+        "dir": "version_05",
+        "params": {
+          "sigma": 0.1,
+          "beta": 0.8,
+          "temperature": 0.9,
+          "seed": 111
+        },
+        "cosine_to_source": 0.2925269211969668,
+        "has_features": false
+      },
+      {
+        "version": 6,
+        "dir": "version_06",
+        "params": {
+          "sigma": 0.1,
+          "beta": 0.8,
+          "temperature": 1.0,
+          "seed": 111
+        },
+        "cosine_to_source": 0.2925269211969668,
+        "has_features": false
+      },
+      {
+        "version": 7,
+        "dir": "version_07",
+        "params": {
+          "sigma": 0.1,
+          "beta": 1.0,
+          "temperature": 0.9,
+          "seed": 111
+        },
+        "cosine_to_source": 0.013921571417392836,
+        "has_features": false
+      },
+      {
+        "version": 8,
+        "dir": "version_08",
+        "params": {
+          "sigma": 0.1,
+          "beta": 1.0,
+          "temperature": 1.0,
+          "seed": 111
+        },
+        "cosine_to_source": 0.013921571417392836,
+        "has_features": false
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "sigma": 0.05,
+  "beta": 0.8,
+  "temperature": 1.0,
+  "seed": 111,
+  "src_genre": "classical",
+  "tgt_genre": "jazz",
+  "created": "2025-11-09T12:07:49Z",
+  "fusion_core": "/Users/zohar/Library/Mobile Documents/com~apple~CloudDocs/MyMusic/fusion_models/fusion_core.pt"
+}
